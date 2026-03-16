@@ -1,0 +1,28 @@
+PODS:
+  - ffplay_player (0.0.1):
+    - FlutterMacOS
+  - file_selector_macos (0.0.1):
+    - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+
+DEPENDENCIES:
+  - ffplay_player (from `Flutter/ephemeral/.symlinks/plugins/ffplay_player/macos`)
+  - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+
+EXTERNAL SOURCES:
+  ffplay_player:
+    :path: Flutter/ephemeral/.symlinks/plugins/ffplay_player/macos
+  file_selector_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+
+SPEC CHECKSUMS:
+  ffplay_player: f11c8580de507e059561d1566f3bd5afe03c36ff
+  file_selector_macos: 660f7672ee62dad6df1bb0cbdb90a10ce3f946df
+  FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
+
+PODFILE CHECKSUM: 935eed6fbcd8cfa0615ce3523727b3d358d9fbab
+
+COCOAPODS: 1.16.2
