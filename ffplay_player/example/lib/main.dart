@@ -23,6 +23,11 @@ class _MyAppState extends State<MyApp> {
   String _status = 'Ready - Click "Create Player" to start';
   String? _currentUrl;
   
+  // For seek slider - only seek on drag end
+  bool _isDragging = false;
+  double _dragPosition = 0;
+  double? _seekingPosition; // Target position when seeking, null when not seeking
+  
   @override
   void initState() {
     super.initState();
@@ -54,6 +59,14 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _onStatsUpdated(FfplayPlayerStats stats) {
+    // Clear seeking position when actual position is close to target
+    if (_seekingPosition != null) {
+      final diff = (stats.position - _seekingPosition!).abs();
+      // If we're within 0.5 seconds of the target, consider seek complete
+      if (diff < 0.5) {
+        _seekingPosition = null;
+      }
+    }
     setState(() {});
   }
 
@@ -300,7 +313,7 @@ class _MyAppState extends State<MyApp> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                formatDuration(_controller!.position),
+                                formatDuration(_isDragging ? _dragPosition : (_seekingPosition ?? _controller!.position)),
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                               Text(
@@ -310,11 +323,28 @@ class _MyAppState extends State<MyApp> {
                             ],
                           ),
                           Slider(
-                            value: _controller!.duration > 0 
-                                ? _controller!.position.clamp(0.0, _controller!.duration) 
-                                : 0,
+                            value: _isDragging 
+                                ? _dragPosition.clamp(0.0, _controller!.duration) 
+                                : (_seekingPosition ?? _controller!.position).clamp(0.0, _controller!.duration),
                             max: _controller!.duration > 0 ? _controller!.duration : 1,
-                            onChanged: _controller!.duration > 0 ? (value) => _seek(value) : null,
+                            onChangeStart: (value) {
+                              _isDragging = true;
+                              _dragPosition = value;
+                            },
+                            onChanged: (value) {
+                              // Update local value during drag without seeking
+                              setState(() {
+                                _dragPosition = value;
+                              });
+                            },
+                            onChangeEnd: (value) {
+                              // Set seeking position to show target while seeking
+                              setState(() {
+                                _isDragging = false;
+                                _seekingPosition = value;
+                              });
+                              _seek(value);
+                            },
                           ),
                         ],
                       ),
