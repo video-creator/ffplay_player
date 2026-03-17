@@ -36,6 +36,7 @@ class _MyAppState extends State<MyApp> {
 
   void _createPlayer() {
     _controller?.dispose();
+    _controller = null;
     
     try {
       _controller = FfplayPlayerController();
@@ -47,6 +48,16 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _status = 'Error creating player: $e';
       });
+    }
+  }
+  
+  // Stop current player before switching URL
+  Future<void> _resetPlayer() async {
+    if (_controller != null) {
+      await _controller!.stop();
+      _seekingPosition = null;
+      _isDragging = false;
+      _dragPosition = 0;
     }
   }
 
@@ -85,6 +96,8 @@ class _MyAppState extends State<MyApp> {
       final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
       
       if (file != null) {
+        // Stop current player and create new one
+        await _resetPlayer();
         setState(() {
           _currentUrl = file.path;
           _status = file.name;
@@ -100,10 +113,12 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  void _pasteFromClipboard() async {
+  Future<void> _pasteFromClipboard() async {
     try {
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       if (data?.text != null && data!.text!.isNotEmpty) {
+        // Stop current player and create new one
+        await _resetPlayer();
         setState(() {
           _currentUrl = data.text;
           _status = 'URL loaded';
@@ -120,6 +135,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _playSampleVideo(String url, String name) async {
+    // Stop current player and create new one
+    await _resetPlayer();
     setState(() {
       _currentUrl = url;
       _status = name;
