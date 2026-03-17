@@ -96,7 +96,6 @@ class _MyAppState extends State<MyApp> {
       final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
       
       if (file != null) {
-        // Stop current player and create new one
         await _resetPlayer();
         setState(() {
           _currentUrl = file.path;
@@ -104,6 +103,7 @@ class _MyAppState extends State<MyApp> {
         });
         if (_controller != null) {
           await _controller!.setUrl(file.path);
+          await _controller!.play();
         }
       }
     } catch (e) {
@@ -117,7 +117,6 @@ class _MyAppState extends State<MyApp> {
     try {
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       if (data?.text != null && data!.text!.isNotEmpty) {
-        // Stop current player and create new one
         await _resetPlayer();
         setState(() {
           _currentUrl = data.text;
@@ -125,6 +124,7 @@ class _MyAppState extends State<MyApp> {
         });
         if (_controller != null) {
           await _controller!.setUrl(data.text!);
+          await _controller!.play();
         }
       }
     } catch (e) {
@@ -135,7 +135,6 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _playSampleVideo(String url, String name) async {
-    // Stop current player and create new one
     await _resetPlayer();
     setState(() {
       _currentUrl = url;
@@ -143,6 +142,7 @@ class _MyAppState extends State<MyApp> {
     });
     if (_controller != null) {
       await _controller!.setUrl(url);
+      await _controller!.play();
     }
   }
 

@@ -172,6 +172,11 @@ public class FfplayPlatformView: NSView {
             return
         }
         
+        // Ensure event loop is running
+        if eventTimer == nil {
+            startEventLoop()
+        }
+        
         // Force layout to ensure bounds are correct
         self.layoutSubtreeIfNeeded()
         
@@ -395,6 +400,7 @@ public class FfplayPlatformView: NSView {
     // MARK: - Cleanup
     
     private func destroyPlayer() {
+        stopEventLoop()
         stopStatsTimer()
         unembedSdlView()
         
