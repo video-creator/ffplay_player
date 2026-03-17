@@ -28,6 +28,10 @@ class _MyAppState extends State<MyApp> {
   double _dragPosition = 0;
   double? _seekingPosition;
   
+  // Loop and speed settings
+  int _loop = 1;  // 1 = no loop (default), 0 = infinite
+  double _speed = 1.0;  // 1.0 = normal speed
+  
   @override
   void initState() {
     super.initState();
@@ -224,6 +228,20 @@ class _MyAppState extends State<MyApp> {
       _controller!.setMute(!_controller!.muted);
       setState(() {});
     }
+  }
+  
+  void _toggleLoop() {
+    // Toggle between no loop (1), infinite loop (0)
+    int newLoop = _loop == 1 ? 0 : 1;
+    _loop = newLoop;
+    _controller?.setLoop(newLoop);
+    setState(() {});
+  }
+  
+  void _setSpeed(double speed) {
+    _speed = speed;
+    _controller?.setSpeed(speed);
+    setState(() {});
   }
 
   @override
@@ -448,6 +466,49 @@ class _MyAppState extends State<MyApp> {
                       Text(
                         '${_controller?.volume ?? 100}%',
                         style: const TextStyle(fontSize: 12, color: Colors.white70),
+                      ),
+                      
+                      const SizedBox(width: 16),
+                      
+                      // Loop control
+                      IconButton(
+                        icon: Icon(
+                          _loop == 0 ? Icons.repeat : Icons.repeat_one,
+                          color: _loop == 0 ? Colors.green : Colors.white70,
+                        ),
+                        iconSize: 24,
+                        tooltip: _loop == 0 ? 'Loop: ON (infinite)' : 'Loop: OFF',
+                        onPressed: _toggleLoop,
+                      ),
+                      
+                      const SizedBox(width: 8),
+                      
+                      // Speed control
+                      const Text(
+                        'Speed:',
+                        style: TextStyle(fontSize: 12, color: Colors.white70),
+                      ),
+                      const SizedBox(width: 4),
+                      DropdownButton<double>(
+                        value: _speed,
+                        dropdownColor: Colors.grey[900],
+                        underline: Container(),
+                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                        items: const [
+                          DropdownMenuItem(value: 0.25, child: Text('0.25x')),
+                          DropdownMenuItem(value: 0.5, child: Text('0.5x')),
+                          DropdownMenuItem(value: 0.75, child: Text('0.75x')),
+                          DropdownMenuItem(value: 1.0, child: Text('1.0x')),
+                          DropdownMenuItem(value: 1.25, child: Text('1.25x')),
+                          DropdownMenuItem(value: 1.5, child: Text('1.5x')),
+                          DropdownMenuItem(value: 1.75, child: Text('1.75x')),
+                          DropdownMenuItem(value: 2.0, child: Text('2.0x')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            _setSpeed(value);
+                          }
+                        },
                       ),
                     ],
                   ),

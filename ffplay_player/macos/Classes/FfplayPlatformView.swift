@@ -150,6 +150,22 @@ public class FfplayPlatformView: NSView {
             let state = getState()
             result(state)
             
+        case "setLoop":
+            if let loop = args?["loop"] as? Int {
+                setLoop(loop)
+                result(nil)
+            } else {
+                result(FlutterError(code: "INVALID_ARG", message: "Loop is required", details: nil))
+            }
+            
+        case "setSpeed":
+            if let speed = args?["speed"] as? Double {
+                setSpeed(speed)
+                result(nil)
+            } else {
+                result(FlutterError(code: "INVALID_ARG", message: "Speed is required", details: nil))
+            }
+            
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -275,6 +291,16 @@ public class FfplayPlatformView: NSView {
     private func setMute(_ muted: Bool) {
         guard let player = player else { return }
         FfplayNativePlayer.setMute(player, muted: muted ? 1 : 0)
+    }
+    
+    private func setLoop(_ loop: Int) {
+        guard let player = player else { return }
+        FfplayNativePlayer.setLoop(player, loop: Int32(loop))
+    }
+    
+    private func setSpeed(_ speed: Double) {
+        guard let player = player else { return }
+        FfplayNativePlayer.setSpeed(player, speed: speed)
     }
     
     private func getPosition() -> Double {

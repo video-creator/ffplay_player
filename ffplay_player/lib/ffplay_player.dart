@@ -48,6 +48,8 @@ class FfplayPlayerController {
   double _duration = 0;
   int _volume = 100;
   bool _muted = false;
+  int _loop = 1;  // 1 = no loop (default), 0 = infinite
+  double _speed = 1.0;  // 1.0 = normal speed
   String? _url;
   
   // Callbacks
@@ -190,6 +192,28 @@ class FfplayPlayerController {
       await _channel!.invokeMethod('setMute', {'muted': muted});
     }
   }
+  
+  /// Set loop count (0 = infinite, 1 = no loop)
+  Future<void> setLoop(int loop) async {
+    _loop = loop;
+    if (_channel != null) {
+      await _channel!.invokeMethod('setLoop', {'loop': loop});
+    }
+  }
+  
+  /// Get loop count
+  int get loop => _loop;
+  
+  /// Set playback speed (0.25 to 4.0, 1.0 = normal)
+  Future<void> setSpeed(double speed) async {
+    _speed = speed.clamp(0.25, 4.0);
+    if (_channel != null) {
+      await _channel!.invokeMethod('setSpeed', {'speed': _speed});
+    }
+  }
+  
+  /// Get playback speed
+  double get speed => _speed;
   
   /// Get current position
   Future<double> getPosition() async {

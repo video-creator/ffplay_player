@@ -24,6 +24,9 @@ public class FfplayNativePlayer {
     private typealias FFplayPlayerGetWindowId = @convention(c) (OpaquePointer) -> UInt32
     private typealias FFplayPlayerGetNativeView = @convention(c) (OpaquePointer) -> UnsafeMutableRawPointer?
     private typealias FFplayPlayerResizeWindow = @convention(c) (OpaquePointer, Int32, Int32) -> Void
+    private typealias FFplayPlayerSetLoop = @convention(c) (OpaquePointer, Int32) -> Void
+    private typealias FFplayPlayerSetSpeed = @convention(c) (OpaquePointer, Double) -> Void
+    private typealias FFplayPlayerGetSpeed = @convention(c) (OpaquePointer) -> Double
     private typealias InitDynload = @convention(c) () -> Void
     private typealias AvformatNetworkInit = @convention(c) () -> Void
     
@@ -52,6 +55,9 @@ public class FfplayNativePlayer {
     private static var _getWindowId: FFplayPlayerGetWindowId?
     private static var _getNativeView: FFplayPlayerGetNativeView?
     private static var _resizeWindow: FFplayPlayerResizeWindow?
+    private static var _setLoop: FFplayPlayerSetLoop?
+    private static var _setSpeed: FFplayPlayerSetSpeed?
+    private static var _getSpeed: FFplayPlayerGetSpeed?
     
     // MARK: - Initialization
     
@@ -97,6 +103,9 @@ public class FfplayNativePlayer {
         _getWindowId = unsafeBitCast(dlsym(handle, "ffplay_player_get_window_id"), to: FFplayPlayerGetWindowId.self)
         _getNativeView = unsafeBitCast(dlsym(handle, "ffplay_player_get_native_view"), to: FFplayPlayerGetNativeView.self)
         _resizeWindow = unsafeBitCast(dlsym(handle, "ffplay_player_resize_window"), to: FFplayPlayerResizeWindow.self)
+        _setLoop = unsafeBitCast(dlsym(handle, "ffplay_player_set_loop"), to: FFplayPlayerSetLoop.self)
+        _setSpeed = unsafeBitCast(dlsym(handle, "ffplay_player_set_speed"), to: FFplayPlayerSetSpeed.self)
+        _getSpeed = unsafeBitCast(dlsym(handle, "ffplay_player_get_speed"), to: FFplayPlayerGetSpeed.self)
         
         // Call initialization functions
         if let initDynload = unsafeBitCast(dlsym(handle, "init_dynload"), to: InitDynload?.self) {
@@ -198,5 +207,20 @@ public class FfplayNativePlayer {
     /// This should be called after embedding to ensure the renderer matches the view size.
     public static func resizeWindow(_ player: OpaquePointer, width: Int32, height: Int32) {
         _resizeWindow?(player, width, height)
+    }
+    
+    /// Set loop count (0 = infinite, 1 = play once).
+    public static func setLoop(_ player: OpaquePointer, loop: Int32) {
+        _setLoop?(player, loop)
+    }
+    
+    /// Set playback speed (0.25 to 4.0, 1.0 = normal).
+    public static func setSpeed(_ player: OpaquePointer, speed: Double) {
+        _setSpeed?(player, speed)
+    }
+    
+    /// Get current playback speed.
+    public static func getSpeed(_ player: OpaquePointer) -> Double {
+        return _getSpeed?(player) ?? 1.0
     }
 }
