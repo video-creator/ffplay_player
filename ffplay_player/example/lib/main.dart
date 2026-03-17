@@ -68,9 +68,12 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _onStatsUpdated(FfplayPlayerStats stats) {
-    if (_seekingPosition != null) {
+    // Clear seeking position only when native layer confirms seek is complete
+    // and we've reached close to the target position
+    if (_seekingPosition != null && !stats.seeking) {
       final diff = (stats.position - _seekingPosition!).abs();
-      if (diff < 0.5) {
+      if (diff < 1.0) {
+        // Seek is complete and we're close to target, clear the seeking position
         _seekingPosition = null;
       }
     }

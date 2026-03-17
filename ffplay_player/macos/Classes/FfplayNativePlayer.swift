@@ -11,6 +11,7 @@ public class FfplayNativePlayer {
     private typealias FFplayPlayerStart = @convention(c) (OpaquePointer) -> Int32
     private typealias FFplayPlayerPause = @convention(c) (OpaquePointer, Int32) -> Void
     private typealias FFplayPlayerSeek = @convention(c) (OpaquePointer, Double) -> Void
+    private typealias FFplayPlayerIsSeeking = @convention(c) (OpaquePointer) -> Int32
     private typealias FFplayPlayerSeekRelative = @convention(c) (OpaquePointer, Double) -> Void
     private typealias FFplayPlayerSetVolumeLive = @convention(c) (OpaquePointer, Int32) -> Void
     private typealias FFplayPlayerSetMute = @convention(c) (OpaquePointer, Int32) -> Void
@@ -38,6 +39,7 @@ public class FfplayNativePlayer {
     private static var _start: FFplayPlayerStart?
     private static var _pause: FFplayPlayerPause?
     private static var _seek: FFplayPlayerSeek?
+    private static var _isSeeking: FFplayPlayerIsSeeking?
     private static var _seekRelative: FFplayPlayerSeekRelative?
     private static var _setVolumeLive: FFplayPlayerSetVolumeLive?
     private static var _setMute: FFplayPlayerSetMute?
@@ -82,6 +84,7 @@ public class FfplayNativePlayer {
         _start = unsafeBitCast(dlsym(handle, "ffplay_player_start"), to: FFplayPlayerStart.self)
         _pause = unsafeBitCast(dlsym(handle, "ffplay_player_pause"), to: FFplayPlayerPause.self)
         _seek = unsafeBitCast(dlsym(handle, "ffplay_player_seek"), to: FFplayPlayerSeek.self)
+        _isSeeking = unsafeBitCast(dlsym(handle, "ffplay_player_is_seeking"), to: FFplayPlayerIsSeeking.self)
         _seekRelative = unsafeBitCast(dlsym(handle, "ffplay_player_seek_relative"), to: FFplayPlayerSeekRelative.self)
         _setVolumeLive = unsafeBitCast(dlsym(handle, "ffplay_player_set_volume_live"), to: FFplayPlayerSetVolumeLive.self)
         _setMute = unsafeBitCast(dlsym(handle, "ffplay_player_set_mute"), to: FFplayPlayerSetMute.self)
@@ -137,6 +140,10 @@ public class FfplayNativePlayer {
     
     public static func seek(_ player: OpaquePointer, position: Double) {
         _seek?(player, position)
+    }
+    
+    public static func isSeeking(_ player: OpaquePointer) -> Bool {
+        return (_isSeeking?(player) ?? 0) != 0
     }
     
     public static func seekRelative(_ player: OpaquePointer, delta: Double) {

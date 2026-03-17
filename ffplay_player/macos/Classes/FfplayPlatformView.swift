@@ -112,6 +112,13 @@ public class FfplayPlatformView: NSView {
                 result(FlutterError(code: "INVALID_ARG", message: "Delta is required", details: nil))
             }
             
+        case "isSeeking":
+            guard let player = player else {
+                result(false)
+                return
+            }
+            result(FfplayNativePlayer.isSeeking(player))
+            
         case "setVolume":
             if let volume = args?["volume"] as? Int {
                 setVolume(volume)
@@ -371,6 +378,9 @@ public class FfplayPlatformView: NSView {
                 self.isPlaying = true
                 self.wasAtEof = false
                 self.startStatsTimer()
+                // Trigger immediate stats update to avoid 0.5s delay
+                // This makes the first seek after EOF feel as responsive as normal seeks
+                self.updateStats()
             }
         }
         RunLoop.main.add(eventTimer!, forMode: .common)
@@ -402,11 +412,13 @@ public class FfplayPlatformView: NSView {
         
         let position = FfplayNativePlayer.getPosition(player)
         let duration = FfplayNativePlayer.getDuration(player)
+        let seeking = FfplayNativePlayer.isSeeking(player)
         
         channel?.invokeMethod("onStatsUpdate", arguments: [
             "position": position,
             "duration": duration,
-            "state": getState()
+            "state": getState(),
+            "seeking": seeking
         ])
     }
     

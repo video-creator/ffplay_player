@@ -17,11 +17,13 @@ class FfplayPlayerStats {
   final double position;
   final double duration;
   final FfplayPlayerState state;
+  final bool seeking;
 
   FfplayPlayerStats({
     required this.position,
     required this.duration,
     required this.state,
+    this.seeking = false,
   });
 
   double get progress {
@@ -79,10 +81,12 @@ class FfplayPlayerController {
         _duration = (args['duration'] as num?)?.toDouble() ?? 0;
         final stateStr = args['state'] as String? ?? 'idle';
         _state = _parseState(stateStr);
+        final seeking = (args['seeking'] as bool?) ?? false;
         onStatsUpdated?.call(FfplayPlayerStats(
           position: _position,
           duration: _duration,
           state: _state,
+          seeking: seeking,
         ));
         onStateChanged?.call(_state);
         break;
@@ -162,6 +166,13 @@ class FfplayPlayerController {
   Future<void> seekRelative(double delta) async {
     if (_channel == null) return;
     await _channel!.invokeMethod('seekRelative', {'delta': delta});
+  }
+  
+  /// Check if seeking is in progress
+  Future<bool> isSeeking() async {
+    if (_channel == null) return false;
+    final result = await _channel!.invokeMethod('isSeeking');
+    return result == true;
   }
   
   /// Set volume (0-100)
