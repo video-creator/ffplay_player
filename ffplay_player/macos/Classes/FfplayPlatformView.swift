@@ -349,16 +349,25 @@ public class FfplayPlatformView: NSView {
     private func startEventLoop() {
         // Run SDL event loop periodically on main thread
         eventTimer = Timer.scheduledTimer(withTimeInterval: 0.01, repeats: true) { [weak self] _ in
-            guard let self = self, let player = self.player else { return }
+            guard let self = self else { return }
+            // Get player reference - but check again after runEventLoop
+            guard let player = self.player else { return }
             _ = FfplayNativePlayer.runEventLoop(10)
+            
+            // IMPORTANT: Re-check player after runEventLoop because during the
+            // timeout (av_usleep), other events may have destroyed the player
+            guard self.player != nil else { return }
             
             // Check for EOF
             if FfplayNativePlayer.isEof(player) {
+                // Double-check player is still valid before state changes
+                guard self.player != nil else { return }
                 self.onPlaybackComplete()
                 self.wasAtEof = true
             } else if self.wasAtEof && !self.isPlaying {
                 // Playback resumed after seek (was at EOF, now not EOF)
                 // This handles the case where user seeks after playback completes
+                guard self.player != nil else { return }
                 self.isPlaying = true
                 self.wasAtEof = false
                 self.startStatsTimer()
