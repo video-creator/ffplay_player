@@ -12,6 +12,7 @@ public class FfplayPlatformView: NSView {
     
     // Player state
     private var isPlaying: Bool = false
+    private var wasAtEof: Bool = false
     private var currentUrl: String = ""
     
     public init(viewIdentifier: Int64, arguments args: Any?, binaryMessenger messenger: FlutterBinaryMessenger) {
@@ -206,6 +207,7 @@ public class FfplayPlatformView: NSView {
                 }
             }
             
+            // Start stats timer AFTER isPlaying is set to true
             startStatsTimer()
             completion(true)
         } else {
@@ -353,6 +355,13 @@ public class FfplayPlatformView: NSView {
             // Check for EOF
             if FfplayNativePlayer.isEof(player) {
                 self.onPlaybackComplete()
+                self.wasAtEof = true
+            } else if self.wasAtEof && !self.isPlaying {
+                // Playback resumed after seek (was at EOF, now not EOF)
+                // This handles the case where user seeks after playback completes
+                self.isPlaying = true
+                self.wasAtEof = false
+                self.startStatsTimer()
             }
         }
         RunLoop.main.add(eventTimer!, forMode: .common)
@@ -366,6 +375,8 @@ public class FfplayPlatformView: NSView {
     // MARK: - Stats Timer
     
     private func startStatsTimer() {
+        // Don't create a new timer if one already exists
+        guard statsTimer == nil else { return }
         statsTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.updateStats()
         }
@@ -391,6 +402,9 @@ public class FfplayPlatformView: NSView {
     }
     
     private func onPlaybackComplete() {
+        // Prevent multiple calls
+        guard isPlaying else { return }
+        
         isPlaying = false
         stopStatsTimer()
         

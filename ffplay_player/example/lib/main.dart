@@ -198,8 +198,17 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _seek(double seconds) {
+  Future<void> _seek(double seconds) async {
     _controller?.seek(seconds);
+    // After seek from stopped/paused state, the native layer should resume playback automatically
+    // We just need to update the UI state if currently stopped
+    if (_controller?.state == FfplayPlayerState.stopped || 
+        _controller?.state == FfplayPlayerState.paused) {
+      // The native seek should resume playback; update state for UI feedback
+      setState(() {
+        _status = 'Seeking...';
+      });
+    }
   }
 
   void _setVolume(int volume) {
