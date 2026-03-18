@@ -3,6 +3,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 
+// Export ASR and subtitle support
+export 'src/asr_service.dart';
+export 'src/subtitle.dart';
+export 'src/asr_installer_service.dart';
+export 'src/asr_script_service.dart';
+
 /// Player state enumeration
 enum FfplayPlayerState {
   idle,
@@ -333,6 +339,29 @@ class FfplayPlayerPlugin {
   
   /// Check if initialized
   static bool get isInitialized => _initialized;
+  
+  /// Extract audio from a video file to WAV format.
+  /// 
+  /// This is useful for ASR (speech recognition) preprocessing.
+  /// The output is a mono 16-bit PCM WAV file at the specified sample rate.
+  /// 
+  /// [inputPath] - Path to the input media file (video/audio)
+  /// [outputPath] - Path for the output WAV file
+  /// [sampleRate] - Desired sample rate (default: 16000 for ASR)
+  /// 
+  /// Returns 0 on success, negative on failure.
+  static Future<int> extractAudio({
+    required String inputPath,
+    required String outputPath,
+    int sampleRate = 16000,
+  }) async {
+    final result = await _channel.invokeMethod('extractAudio', {
+      'inputPath': inputPath,
+      'outputPath': outputPath,
+      'sampleRate': sampleRate,
+    });
+    return (result as int?) ?? -1;
+  }
 }
 
 /// Helper function to format duration

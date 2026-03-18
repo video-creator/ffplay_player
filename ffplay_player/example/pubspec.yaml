@@ -31,6 +31,9 @@ dependencies:
   
   # File selector for picking video files
   file_selector: ^1.0.3
+  
+  # Path provider for temp directories
+  path_provider: ^2.1.0
 
 dev_dependencies:
   integration_test:

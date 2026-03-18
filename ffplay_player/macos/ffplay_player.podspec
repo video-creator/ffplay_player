@@ -26,7 +26,7 @@ Supports seek, pause, volume control and embedded video rendering.
   
   # Include all dynamic libraries
   s.vendored_libraries = [
-    'Libraries/libffplay_jni.dylib',
+    'Libraries/libffmpeg_jni.dylib',
     'Libraries/libSDL2-2.0.0.dylib',
     'Libraries/libfdk-aac.2.dylib',
     'Libraries/libx265.215.dylib',

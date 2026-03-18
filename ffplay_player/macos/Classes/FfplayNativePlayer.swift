@@ -27,6 +27,15 @@ public class FfplayNativePlayer {
     private typealias FFplayPlayerSetLoop = @convention(c) (OpaquePointer, Int32) -> Void
     private typealias FFplayPlayerSetSpeed = @convention(c) (OpaquePointer, Double) -> Void
     private typealias FFplayPlayerGetSpeed = @convention(c) (OpaquePointer) -> Double
+    
+    // FFmpeg Transcoder functions for audio extraction
+    private typealias FFmpegTranscoderInit = @convention(c) () -> OpaquePointer?
+    private typealias FFmpegTranscoderRun = @convention(c) (OpaquePointer, Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?) -> Void
+    private typealias FFmpegTranscoderCancel = @convention(c) (OpaquePointer) -> Void
+    private typealias FFmpegTranscoderFree = @convention(c) (OpaquePointer) -> Void
+    private typealias FFmpegTranscoderIsRunning = @convention(c) (OpaquePointer) -> Int32
+    private typealias FFmpegTranscoderGetResult = @convention(c) (OpaquePointer) -> Int32
+    
     private typealias InitDynload = @convention(c) () -> Void
     private typealias AvformatNetworkInit = @convention(c) () -> Void
     
@@ -59,13 +68,23 @@ public class FfplayNativePlayer {
     private static var _setSpeed: FFplayPlayerSetSpeed?
     private static var _getSpeed: FFplayPlayerGetSpeed?
     
+    // FFmpeg Transcoder functions
+    private static var _transcoderInit: FFmpegTranscoderInit?
+    private static var _transcoderRun: FFmpegTranscoderRun?
+    private static var _transcoderCancel: FFmpegTranscoderCancel?
+    private static var _transcoderFree: FFmpegTranscoderFree?
+    private static var _transcoderIsRunning: FFmpegTranscoderIsRunning?
+    private static var _transcoderGetResult: FFmpegTranscoderGetResult?
+    
     // MARK: - Initialization
     
     public static func initialize() {
         guard !isInitialized else { return }
         
-        // Load the library
-        let libraryPath = Bundle.main.path(forResource: "libffplay_jni", ofType: "dylib", inDirectory: "Frameworks")
+        // Load the library - try new name first, then old name for backward compatibility
+        let libraryPath = Bundle.main.path(forResource: "libffmpeg_jni", ofType: "dylib", inDirectory: "Frameworks")
+            ?? Bundle.main.path(forResource: "libffmpeg_jni", ofType: "dylib", inDirectory: "Frameworks/Libraries")
+            ?? Bundle.main.path(forResource: "libffplay_jni", ofType: "dylib", inDirectory: "Frameworks")
             ?? Bundle.main.path(forResource: "libffplay_jni", ofType: "dylib", inDirectory: "Frameworks/Libraries")
         
         if let path = libraryPath {
@@ -74,11 +93,15 @@ public class FfplayNativePlayer {
         
         // If not found in bundle, try @rpath
         if handle == nil {
+            handle = dlopen("libffmpeg_jni.dylib", RTLD_NOW | RTLD_LOCAL)
+        }
+        // Fall back to old name
+        if handle == nil {
             handle = dlopen("libffplay_jni.dylib", RTLD_NOW | RTLD_LOCAL)
         }
         
         guard let handle = handle else {
-            print("FfplayNativePlayer: Failed to load libffplay_jni.dylib")
+            print("FfplayNativePlayer: Failed to load libffmpeg_jni.dylib or libffplay_jni.dylib")
             return
         }
         
@@ -106,6 +129,14 @@ public class FfplayNativePlayer {
         _setLoop = unsafeBitCast(dlsym(handle, "ffplay_player_set_loop"), to: FFplayPlayerSetLoop.self)
         _setSpeed = unsafeBitCast(dlsym(handle, "ffplay_player_set_speed"), to: FFplayPlayerSetSpeed.self)
         _getSpeed = unsafeBitCast(dlsym(handle, "ffplay_player_get_speed"), to: FFplayPlayerGetSpeed.self)
+        
+        // Load FFmpeg transcoder functions
+        _transcoderInit = unsafeBitCast(dlsym(handle, "ffmpeg_transcoder_init"), to: FFmpegTranscoderInit.self)
+        _transcoderRun = unsafeBitCast(dlsym(handle, "ffmpeg_transcoder_run"), to: FFmpegTranscoderRun.self)
+        _transcoderCancel = unsafeBitCast(dlsym(handle, "ffmpeg_transcoder_cancel"), to: FFmpegTranscoderCancel.self)
+        _transcoderFree = unsafeBitCast(dlsym(handle, "ffmpeg_transcoder_free"), to: FFmpegTranscoderFree.self)
+        _transcoderIsRunning = unsafeBitCast(dlsym(handle, "ffmpeg_transcoder_is_running"), to: FFmpegTranscoderIsRunning.self)
+        _transcoderGetResult = unsafeBitCast(dlsym(handle, "ffmpeg_transcoder_get_result"), to: FFmpegTranscoderGetResult.self)
         
         // Call initialization functions
         if let initDynload = unsafeBitCast(dlsym(handle, "init_dynload"), to: InitDynload?.self) {
@@ -222,5 +253,98 @@ public class FfplayNativePlayer {
     /// Get current playback speed.
     public static func getSpeed(_ player: OpaquePointer) -> Double {
         return _getSpeed?(player) ?? 1.0
+    }
+    
+    // MARK: - Audio Extraction (using FFmpeg Transcoder)
+    
+    /// Extract audio from a media file to WAV format using ffmpeg_transcoder_run.
+    /// This is useful for ASR (speech recognition) preprocessing.
+    ///
+    /// - Parameters:
+    ///   - inputPath: Path to the input media file (video/audio)
+    ///   - outputPath: Path for the output WAV file
+    ///   - sampleRate: Desired sample rate (e.g., 16000 for ASR)
+    /// - Returns: 0 on success, negative on failure
+    public static func extractAudio(inputPath: String, outputPath: String, sampleRate: Int32 = 16000) -> Int32 {
+        guard let transcoder = _transcoderInit?() else {
+            print("FfplayNativePlayer: Failed to init transcoder")
+            return -1
+        }
+        
+        defer {
+            _transcoderFree?(transcoder)
+        }
+        
+        // Build ffmpeg command arguments for audio extraction
+        // ffmpeg -i input -vn -acodec pcm_s16le -ar 16000 -ac 1 output.wav
+        let args = [
+            "ffmpeg",
+            "-i", inputPath,
+            "-vn",                    // No video
+            "-acodec", "pcm_s16le",   // 16-bit PCM
+            "-ar", String(sampleRate), // Sample rate
+            "-ac", "1",               // Mono
+            "-y",                     // Overwrite output
+            outputPath
+        ]
+        
+        // Convert to C strings
+        var cArgs = args.map { $0.withCString { strdup($0) } }
+        cArgs.append(nil) // Null terminator
+        
+        defer {
+            cArgs.forEach { if let ptr = $0 { free(ptr) } }
+        }
+        
+        // Run transcoder - pass pointer to the array
+        cArgs.withUnsafeMutableBufferPointer { buffer in
+            _transcoderRun?(transcoder, Int32(args.count), buffer.baseAddress)
+        }
+        
+        // Wait for completion (simple polling)
+        while (_transcoderIsRunning?(transcoder) ?? 0) != 0 {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        
+        return _transcoderGetResult?(transcoder) ?? -1
+    }
+    
+    /// Create a new transcoder instance.
+    public static func createTranscoder() -> OpaquePointer? {
+        return _transcoderInit?()
+    }
+    
+    /// Run transcoder with custom arguments.
+    public static func runTranscoder(_ transcoder: OpaquePointer, args: [String]) {
+        var cArgs = args.map { $0.withCString { strdup($0) } }
+        cArgs.append(nil)
+        
+        defer {
+            cArgs.forEach { if let ptr = $0 { free(ptr) } }
+        }
+        
+        cArgs.withUnsafeMutableBufferPointer { buffer in
+            _transcoderRun?(transcoder, Int32(args.count), buffer.baseAddress)
+        }
+    }
+    
+    /// Check if transcoder is running.
+    public static func isTranscoderRunning(_ transcoder: OpaquePointer) -> Bool {
+        return (_transcoderIsRunning?(transcoder) ?? 0) != 0
+    }
+    
+    /// Get transcoder result.
+    public static func getTranscoderResult(_ transcoder: OpaquePointer) -> Int32 {
+        return _transcoderGetResult?(transcoder) ?? -1
+    }
+    
+    /// Cancel transcoder.
+    public static func cancelTranscoder(_ transcoder: OpaquePointer) {
+        _transcoderCancel?(transcoder)
+    }
+    
+    /// Free transcoder.
+    public static func freeTranscoder(_ transcoder: OpaquePointer) {
+        _transcoderFree?(transcoder)
     }
 }

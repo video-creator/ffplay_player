@@ -4,11 +4,15 @@ PODS:
   - file_selector_macos (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
+  - path_provider_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
 
 DEPENDENCIES:
   - ffplay_player (from `Flutter/ephemeral/.symlinks/plugins/ffplay_player/macos`)
   - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
 
 EXTERNAL SOURCES:
   ffplay_player:
@@ -17,11 +21,14 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
+  path_provider_foundation:
+    :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
 
 SPEC CHECKSUMS:
-  ffplay_player: f11c8580de507e059561d1566f3bd5afe03c36ff
+  ffplay_player: 323db26557405dca5d59bf82908f70c5b80eddd0
   file_selector_macos: 660f7672ee62dad6df1bb0cbdb90a10ce3f946df
   FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
+  path_provider_foundation: 608fcb11be570ce83519b076ab6a1fffe2474f05
 
 PODFILE CHECKSUM: 935eed6fbcd8cfa0615ce3523727b3d358d9fbab
 
