@@ -14,6 +14,8 @@ public class FfplayPlatformView: NSView {
     private var isPlaying: Bool = false
     private var wasAtEof: Bool = false
     private var currentUrl: String = ""
+    private var loop: Int = 1  // 1 = no loop (default), 0 = infinite
+    private var playerDestroyed: Bool = false  // Track if player was destroyed after playback complete
     
     public init(viewIdentifier: Int64, arguments args: Any?, binaryMessenger messenger: FlutterBinaryMessenger) {
         self.viewIdentifier = viewIdentifier
@@ -176,6 +178,10 @@ public class FfplayPlatformView: NSView {
     private func setUrl(_ url: String) {
         currentUrl = url
         
+        // Reset state
+        playerDestroyed = false
+        wasAtEof = false
+        
         // Create player if not exists
         if player == nil {
             player = FfplayNativePlayer.createPlayer()
@@ -184,8 +190,11 @@ public class FfplayPlatformView: NSView {
         if let player = player {
             FfplayNativePlayer.setUrl(player, url: url)
             
-            // Set initial size
-            let frame = self.bounds
+            // Set initial size - use default if bounds not ready
+            var frame = self.bounds
+            if frame.width <= 0 || frame.height <= 0 {
+                frame = NSRect(x: 0, y: 0, width: 640, height: 480)
+            }
             FfplayNativePlayer.setSize(player, width: Int32(frame.width), height: Int32(frame.height))
         }
     }
@@ -211,8 +220,7 @@ public class FfplayPlatformView: NSView {
         }
         FfplayNativePlayer.setSize(player, width: Int32(frame.width), height: Int32(frame.height))
         
-        // Start playback - this will be called on the main thread
-        // which is correct for SDL on macOS
+        // Start playback
         let result = FfplayNativePlayer.start(player)
         
         if result == 0 {
@@ -230,7 +238,6 @@ public class FfplayPlatformView: NSView {
                 }
             }
             
-            // Start stats timer AFTER isPlaying is set to true
             startStatsTimer()
             completion(true)
         } else {
@@ -269,16 +276,128 @@ public class FfplayPlatformView: NSView {
     }
     
     private func stop() {
-        destroyPlayer()
+        // User-initiated stop, set playerDestroyed to false so seek won't recreate
+        playerDestroyed = false
+        
+        // Don't destroy player - keep last frame visible
+        // Just pause and stop stats timer
+        if let player = player {
+            FfplayNativePlayer.pause(player, paused: 1)
+        }
         isPlaying = false
+        stopStatsTimer()
+        
+        // Note: Player is NOT destroyed here to preserve the last frame.
+        // Resources will be released when:
+        // 1. A new URL is set (setUrl will recreate player)
+        // 2. The view is deallocated (deinit calls destroyPlayer)
     }
     
     private func seek(_ position: Double) {
+        // If playback completed (wasAtEof), create new player and destroy old one
+        if wasAtEof && player != nil && !currentUrl.isEmpty {
+            print("FfplayPlatformView: Seek after playback complete, recreating player")
+            
+            // Remove old SDL view first
+            unembedSdlView()
+            
+            // Create new player first
+            guard let newPlayer = FfplayNativePlayer.createPlayer() else {
+                print("FfplayPlatformView: Failed to create new player")
+                return
+            }
+            
+            // Setup new player
+            FfplayNativePlayer.setUrl(newPlayer, url: currentUrl)
+            var frame = self.bounds
+            if frame.width <= 0 || frame.height <= 0 {
+                frame = NSRect(x: 0, y: 0, width: 640, height: 480)
+            }
+            FfplayNativePlayer.setSize(newPlayer, width: Int32(frame.width), height: Int32(frame.height))
+            FfplayNativePlayer.setLoop(newPlayer, loop: Int32(loop))
+            
+            // Destroy old player
+            if let oldPlayer = player {
+                FfplayNativePlayer.destroy(oldPlayer)
+            }
+            
+            // Update reference
+            player = newPlayer
+            wasAtEof = false
+            
+            // Start new player
+            if FfplayNativePlayer.start(newPlayer) == 0 {
+                isPlaying = true
+                startStatsTimer()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    guard let self = self else { return }
+                    self.embedSdlView()
+                    self.resizeToMatchBounds()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    FfplayNativePlayer.seek(newPlayer, position: position)
+                }
+            }
+            return
+        }
+        
+        // Normal seek on existing player
         guard let player = player else { return }
         FfplayNativePlayer.seek(player, position: position)
     }
     
     private func seekRelative(_ delta: Double) {
+        // If playback completed (wasAtEof), create new player and destroy old one
+        if wasAtEof && player != nil && !currentUrl.isEmpty {
+            let duration = FfplayNativePlayer.getDuration(player!)
+            let targetPosition = max(0, duration + delta)
+            
+            print("FfplayPlatformView: SeekRelative after playback complete, recreating player")
+            
+            // Remove old SDL view first
+            unembedSdlView()
+            
+            // Create new player first
+            guard let newPlayer = FfplayNativePlayer.createPlayer() else {
+                print("FfplayPlatformView: Failed to create new player")
+                return
+            }
+            
+            // Setup new player
+            FfplayNativePlayer.setUrl(newPlayer, url: currentUrl)
+            var frame = self.bounds
+            if frame.width <= 0 || frame.height <= 0 {
+                frame = NSRect(x: 0, y: 0, width: 640, height: 480)
+            }
+            FfplayNativePlayer.setSize(newPlayer, width: Int32(frame.width), height: Int32(frame.height))
+            FfplayNativePlayer.setLoop(newPlayer, loop: Int32(loop))
+            
+            // Destroy old player
+            if let oldPlayer = player {
+                FfplayNativePlayer.destroy(oldPlayer)
+            }
+            
+            // Update reference
+            player = newPlayer
+            wasAtEof = false
+            
+            // Start new player
+            if FfplayNativePlayer.start(newPlayer) == 0 {
+                isPlaying = true
+                startStatsTimer()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    guard let self = self else { return }
+                    self.embedSdlView()
+                    self.resizeToMatchBounds()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    FfplayNativePlayer.seek(newPlayer, position: targetPosition)
+                }
+            }
+            return
+        }
+        
+        // Normal seekRelative on existing player
         guard let player = player else { return }
         FfplayNativePlayer.seekRelative(player, delta: delta)
     }
@@ -294,6 +413,7 @@ public class FfplayPlatformView: NSView {
     }
     
     private func setLoop(_ loop: Int) {
+        self.loop = loop
         guard let player = player else { return }
         FfplayNativePlayer.setLoop(player, loop: Int32(loop))
     }
@@ -454,6 +574,12 @@ public class FfplayPlatformView: NSView {
         
         isPlaying = false
         stopStatsTimer()
+        
+        // Don't destroy player - keep last frame visible
+        // User can seek to replay from any position
+        // Just mark that we reached EOF
+        wasAtEof = true
+        print("FfplayPlatformView: Playback complete, keeping last frame")
         
         channel?.invokeMethod("onPlaybackComplete", arguments: nil)
     }

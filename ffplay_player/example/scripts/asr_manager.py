@@ -575,12 +575,16 @@ def download_models(base_dir: str, test_mode: bool = False, test_size_mb: int = 
     models_dir = os.path.join(_asr_path, 'pretrained_models')
     os.makedirs(models_dir, exist_ok=True)
     
-    # Download FireRedASR2-AED (progress: 0.65 - 0.85)
-    if not download_model('xukaituo/FireRedASR2-AED', os.path.join(models_dir, 'FireRedASR2-AED'), 0.65, 0.85, test_mode, test_size_mb):
+    # Download FireRedASR2-AED (progress: 0.65 - 0.80)
+    if not download_model('xukaituo/FireRedASR2-AED', os.path.join(models_dir, 'FireRedASR2-AED'), 0.65, 0.80, test_mode, test_size_mb):
         return False
     
-    # Download FireRedVAD (progress: 0.85 - 0.95)
-    if not download_model('xukaituo/FireRedVAD', os.path.join(models_dir, 'FireRedVAD'), 0.85, 0.95, test_mode, test_size_mb):
+    # Download FireRedVAD (progress: 0.80 - 0.90)
+    if not download_model('xukaituo/FireRedVAD', os.path.join(models_dir, 'FireRedVAD'), 0.80, 0.90, test_mode, test_size_mb):
+        return False
+    
+    # Download FireRedPunc (progress: 0.90 - 0.95)
+    if not download_model('xukaituo/FireRedPunc', os.path.join(models_dir, 'FireRedPunc'), 0.90, 0.95, test_mode, test_size_mb):
         return False
     
     return True
@@ -599,7 +603,7 @@ def check_installed(base_dir: str) -> Dict[str, Any]:
     }
     
     # Check models
-    for model in ['FireRedASR2-AED', 'FireRedVAD']:
+    for model in ['FireRedASR2-AED', 'FireRedVAD', 'FireRedPunc']:
         marker = os.path.join(models_dir, model, '.download_complete')
         result["models"][model] = os.path.exists(marker)
     
@@ -891,6 +895,11 @@ def cmd_transcribe(args):
             output_json("error", {"message": f"Model not found: {model}"})
             return 1
     
+    # Check if FireRedPunc is available (optional)
+    punc_model_path = os.path.join(models_dir, "FireRedPunc")
+    has_punc = os.path.exists(punc_model_path)
+    print(f"[Transcribe] FireRedPunc available: {has_punc}", file=sys.stderr)
+    
     try:
         # Change to FireRedASR2S directory for relative paths in config
         original_cwd = os.getcwd()
@@ -902,19 +911,22 @@ def cmd_transcribe(args):
         from fireredasr2s import FireRedAsr2System, FireRedAsr2SystemConfig
         from fireredasr2s.fireredvad.vad import FireRedVadConfig
         from fireredasr2s.fireredasr2.asr import FireRedAsr2Config
+        from fireredasr2s.fireredpunc import FireRedPuncConfig
         
         print("[Transcribe] Creating ASR system...", file=sys.stderr)
         # Create configs with GPU disabled (macOS doesn't have CUDA)
         vad_config = FireRedVadConfig(use_gpu=False)
         asr_config = FireRedAsr2Config(use_gpu=False)
+        punc_config = FireRedPuncConfig(use_gpu=False) if has_punc else None
         
-        # Create main config with only available models
+        # Create main config with available models
         config = FireRedAsr2SystemConfig(
             enable_vad=True,
             enable_lid=False,  # FireRedLID model not available
-            enable_punc=False,  # FireRedPunc model not available
+            enable_punc=has_punc,  # Enable FireRedPunc if available
             vad_config=vad_config,
             asr_config=asr_config,
+            punc_config=punc_config,
         )
         asr_system = FireRedAsr2System(config)
         

@@ -406,23 +406,23 @@ sys.exit(1)
       }
       
       // Parse transcription result
-      final data = result['transcription'] as Map<String, dynamic>?;
-      if (data == null) {
+      // Python returns data directly at root level
+      if (result['event'] != 'transcription') {
         return TranscriptionResult(
           success: false,
-          error: 'No transcription data returned',
+          error: 'Unexpected event type: ${result['event']}',
         );
       }
       
-      final sentences = (data['sentences'] as List?)
+      final sentences = (result['sentences'] as List?)
           ?.map((s) => TranscriptionSentence.fromJson(s as Map<String, dynamic>))
           .toList() ?? [];
       
       return TranscriptionResult(
-        success: data['success'] as bool? ?? true,
+        success: result['success'] as bool? ?? true,
         sentences: sentences,
-        durationMs: data['duration_ms'] as int? ?? 0,
-        text: data['text'] as String? ?? '',
+        durationMs: result['duration_ms'] as int? ?? 0,
+        text: result['text'] as String? ?? '',
       );
     } catch (e) {
       print('[ASR] transcribe exception: $e');
