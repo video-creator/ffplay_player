@@ -316,6 +316,10 @@ public class FfplayPlatformView: NSView {
             FfplayNativePlayer.setSize(newPlayer, width: Int32(frame.width), height: Int32(frame.height))
             FfplayNativePlayer.setLoop(newPlayer, loop: Int32(loop))
             
+            // Set start time - this makes the player start from the specified position
+            // No need to seek after start, avoiding the brief flash of the beginning
+            FfplayNativePlayer.setStartTime(newPlayer, startTimeS: position)
+            
             // Destroy old player
             if let oldPlayer = player {
                 FfplayNativePlayer.destroy(oldPlayer)
@@ -325,7 +329,7 @@ public class FfplayPlatformView: NSView {
             player = newPlayer
             wasAtEof = false
             
-            // Start new player
+            // Start new player (will start from the specified position)
             if FfplayNativePlayer.start(newPlayer) == 0 {
                 isPlaying = true
                 startStatsTimer()
@@ -333,9 +337,6 @@ public class FfplayPlatformView: NSView {
                     guard let self = self else { return }
                     self.embedSdlView()
                     self.resizeToMatchBounds()
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                    FfplayNativePlayer.seek(newPlayer, position: position)
                 }
             }
             return
@@ -372,6 +373,9 @@ public class FfplayPlatformView: NSView {
             FfplayNativePlayer.setSize(newPlayer, width: Int32(frame.width), height: Int32(frame.height))
             FfplayNativePlayer.setLoop(newPlayer, loop: Int32(loop))
             
+            // Set start time - this makes the player start from the specified position
+            FfplayNativePlayer.setStartTime(newPlayer, startTimeS: targetPosition)
+            
             // Destroy old player
             if let oldPlayer = player {
                 FfplayNativePlayer.destroy(oldPlayer)
@@ -381,7 +385,7 @@ public class FfplayPlatformView: NSView {
             player = newPlayer
             wasAtEof = false
             
-            // Start new player
+            // Start new player (will start from the specified position)
             if FfplayNativePlayer.start(newPlayer) == 0 {
                 isPlaying = true
                 startStatsTimer()
@@ -389,9 +393,6 @@ public class FfplayPlatformView: NSView {
                     guard let self = self else { return }
                     self.embedSdlView()
                     self.resizeToMatchBounds()
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                    FfplayNativePlayer.seek(newPlayer, position: targetPosition)
                 }
             }
             return

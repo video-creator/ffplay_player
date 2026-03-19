@@ -27,6 +27,7 @@ public class FfplayNativePlayer {
     private typealias FFplayPlayerSetLoop = @convention(c) (OpaquePointer, Int32) -> Void
     private typealias FFplayPlayerSetSpeed = @convention(c) (OpaquePointer, Double) -> Void
     private typealias FFplayPlayerGetSpeed = @convention(c) (OpaquePointer) -> Double
+    private typealias FFplayPlayerSetStartTime = @convention(c) (OpaquePointer, Double) -> Void
     
     // FFmpeg Transcoder functions for audio extraction
     private typealias FFmpegTranscoderInit = @convention(c) () -> OpaquePointer?
@@ -67,6 +68,7 @@ public class FfplayNativePlayer {
     private static var _setLoop: FFplayPlayerSetLoop?
     private static var _setSpeed: FFplayPlayerSetSpeed?
     private static var _getSpeed: FFplayPlayerGetSpeed?
+    private static var _setStartTime: FFplayPlayerSetStartTime?
     
     // FFmpeg Transcoder functions
     private static var _transcoderInit: FFmpegTranscoderInit?
@@ -129,6 +131,7 @@ public class FfplayNativePlayer {
         _setLoop = unsafeBitCast(dlsym(handle, "ffplay_player_set_loop"), to: FFplayPlayerSetLoop.self)
         _setSpeed = unsafeBitCast(dlsym(handle, "ffplay_player_set_speed"), to: FFplayPlayerSetSpeed.self)
         _getSpeed = unsafeBitCast(dlsym(handle, "ffplay_player_get_speed"), to: FFplayPlayerGetSpeed.self)
+        _setStartTime = unsafeBitCast(dlsym(handle, "ffplay_player_set_start_time"), to: FFplayPlayerSetStartTime.self)
         
         // Load FFmpeg transcoder functions
         _transcoderInit = unsafeBitCast(dlsym(handle, "ffmpeg_transcoder_init"), to: FFmpegTranscoderInit.self)
@@ -253,6 +256,15 @@ public class FfplayNativePlayer {
     /// Get current playback speed.
     public static func getSpeed(_ player: OpaquePointer) -> Double {
         return _getSpeed?(player) ?? 1.0
+    }
+    
+    /// Set start time for playback.
+    /// Call this before start() to begin playback from a specific position.
+    /// This avoids the brief flash of the beginning when seeking after playback complete.
+    /// @param player      The player instance.
+    /// @param startTimeS  Start position in seconds. Use -1 to start from beginning.
+    public static func setStartTime(_ player: OpaquePointer, startTimeS: Double) {
+        _setStartTime?(player, startTimeS)
     }
     
     // MARK: - Audio Extraction (using FFmpeg Transcoder)
