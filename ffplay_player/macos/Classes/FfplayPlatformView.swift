@@ -182,10 +182,17 @@ public class FfplayPlatformView: NSView {
         playerDestroyed = false
         wasAtEof = false
         
-        // Create player if not exists
-        if player == nil {
-            player = FfplayNativePlayer.createPlayer()
+        // Destroy old player if exists (to properly switch URL)
+        if let existingPlayer = player {
+            stopEventLoop()
+            stopStatsTimer()
+            unembedSdlView()
+            FfplayNativePlayer.destroy(existingPlayer)
+            player = nil
         }
+        
+        // Create new player
+        player = FfplayNativePlayer.createPlayer()
         
         if let player = player {
             FfplayNativePlayer.setUrl(player, url: url)

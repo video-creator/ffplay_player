@@ -3,11 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 
-// Export ASR and subtitle support
-export 'src/asr_service.dart';
+// Export subtitle support
 export 'src/subtitle.dart';
-export 'src/asr_installer_service.dart';
-export 'src/asr_script_service.dart';
 
 /// Player state enumeration
 enum FfplayPlayerState {
