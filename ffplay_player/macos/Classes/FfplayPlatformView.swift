@@ -15,6 +15,9 @@ public class FfplayPlatformView: NSView {
     private var wasAtEof: Bool = false
     private var currentUrl: String = ""
     private var loop: Int = 1  // 1 = no loop (default), 0 = infinite
+    private var speed: Double = 1.0  // Playback speed (1.0 = normal)
+    private var muted: Bool = false  // Mute state
+    private var volume: Int = 100    // Volume (0-100)
     private var playerDestroyed: Bool = false  // Track if player was destroyed after playback complete
     
     public init(viewIdentifier: Int64, arguments args: Any?, binaryMessenger messenger: FlutterBinaryMessenger) {
@@ -231,6 +234,12 @@ public class FfplayPlatformView: NSView {
         let result = FfplayNativePlayer.start(player)
         
         if result == 0 {
+            // Restore previous settings (after player->is is created by start())
+            FfplayNativePlayer.setVolume(player, volume: Int32(volume))
+            FfplayNativePlayer.setMute(player, muted: muted ? 1 : 0)
+            FfplayNativePlayer.setSpeed(player, speed: speed)
+            FfplayNativePlayer.setLoop(player, loop: Int32(loop))
+            
             isPlaying = true
             
             // Delay embedding to ensure Flutter view has completed layout
@@ -411,11 +420,13 @@ public class FfplayPlatformView: NSView {
     }
     
     private func setVolume(_ volume: Int) {
+        self.volume = volume
         guard let player = player else { return }
         FfplayNativePlayer.setVolume(player, volume: Int32(volume))
     }
     
     private func setMute(_ muted: Bool) {
+        self.muted = muted
         guard let player = player else { return }
         FfplayNativePlayer.setMute(player, muted: muted ? 1 : 0)
     }
@@ -427,6 +438,7 @@ public class FfplayPlatformView: NSView {
     }
     
     private func setSpeed(_ speed: Double) {
+        self.speed = speed
         guard let player = player else { return }
         FfplayNativePlayer.setSpeed(player, speed: speed)
     }
