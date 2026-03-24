@@ -71,6 +71,11 @@ class FfplayPlayerController {
   /// [isFinal]   - true = final sentence, false = partial
   /// [positionS] - Approximate playback position in seconds
   SubtitleCallback? onSubtitleUpdate;
+
+  /// Called when async ASR initialisation completes (triggered by initAsr()).
+  /// [success] - true if models loaded successfully, false on error.
+  /// [error]   - error message when success=false, null otherwise.
+  void Function(bool success, String? error)? onAsrReady;
   
   FfplayPlayerController();
   
@@ -117,6 +122,12 @@ class FfplayPlayerController {
         final isFinal = subArgs['is_final'] as bool? ?? false;
         final positionS = (subArgs['position_s'] as num?)?.toDouble() ?? 0.0;
         onSubtitleUpdate?.call(text, isFinal, positionS);
+        break;
+      case 'onAsrReady':
+        final readyArgs = call.arguments as Map<dynamic, dynamic>;
+        final success = readyArgs['success'] as bool? ?? false;
+        final error = readyArgs['error'] as String?;
+        onAsrReady?.call(success, error);
         break;
     }
   }

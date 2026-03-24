@@ -22,6 +22,10 @@ public class FfplayPlatformView: NSView {
 
     // ASR state
     private var asrEnabled: Bool = false   // Whether ASR is currently active
+    // Saved ASR params — restored automatically when player is recreated on URL change
+    private var asrModelDir: String? = nil
+    private var asrVadModel: String? = nil
+    private var asrPunctModel: String? = nil
     
     public init(viewIdentifier: Int64, arguments args: Any?, binaryMessenger messenger: FlutterBinaryMessenger) {
         self.viewIdentifier = viewIdentifier
@@ -178,8 +182,10 @@ public class FfplayPlatformView: NSView {
             if let modelDir = args?["modelDir"] as? String {
                 let vadModel = args?["vadModel"] as? String
                 let punctModel = args?["punctModel"] as? String
-                let ret = initAsr(modelDir: modelDir, vadModel: vadModel, punctModel: punctModel)
-                result(ret == 0 ? nil : FlutterError(code: "ASR_ERROR", message: "Failed to init ASR", details: nil))
+                // Return immediately so Flutter UI stays responsive;
+                // actual model loading happens on a background thread.
+                result(nil)
+                initAsrAsync(modelDir: modelDir, vadModel: vadModel, punctModel: punctModel)
             } else {
                 result(FlutterError(code: "INVALID_ARG", message: "modelDir is required", details: nil))
             }
@@ -227,6 +233,15 @@ public class FfplayPlatformView: NSView {
                 frame = NSRect(x: 0, y: 0, width: 640, height: 480)
             }
             FfplayNativePlayer.setSize(player, width: Int32(frame.width), height: Int32(frame.height))
+
+            // Auto-restore ASR if it was previously enabled
+            // (setUrl destroys and recreates the native player, so ASR context is lost)
+            // Restore asynchronously to avoid blocking the URL-change call.
+            if asrEnabled, let modelDir = asrModelDir {
+                asrEnabled = false  // will be set back to true in callback on success
+                print("FfplayPlatformView: Restoring ASR after URL change (async)")
+                initAsrAsync(modelDir: modelDir, vadModel: asrVadModel, punctModel: asrPunctModel)
+            }
         }
     }
     
@@ -643,8 +658,52 @@ public class FfplayPlatformView: NSView {
         }
     }
 
-    /// Initialise ASR with the given model directory path.
-    /// Returns 0 on success, -1 on failure.
+    /// Kick off ASR initialisation on a background thread so the UI stays responsive.
+    /// Sends `onAsrReady` to Flutter when done (success=true/false).
+    private func initAsrAsync(modelDir: String, vadModel: String? = nil, punctModel: String? = nil) {
+        // Save params immediately — used if URL changes before loading finishes
+        asrModelDir   = modelDir
+        asrVadModel   = vadModel
+        asrPunctModel = punctModel
+
+        // Capture player pointer and self weakly for the background block
+        guard let player = player else {
+            channel?.invokeMethod("onAsrReady", arguments: ["success": false, "error": "no player"])
+            return
+        }
+        let userData = Unmanaged.passUnretained(self).toOpaque()
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let ret = FfplayNativePlayer.initAsr(
+                player,
+                modelDir: modelDir,
+                vadModel: (vadModel?.isEmpty == false) ? vadModel : nil,
+                punctModel: (punctModel?.isEmpty == false) ? punctModel : nil,
+                callback: FfplayPlatformView.asrCCallback,
+                userData: userData
+            )
+            DispatchQueue.main.async {
+                if ret == 0 {
+                    self.asrEnabled = true
+                    self.channel?.invokeMethod("onAsrReady", arguments: ["success": true])
+                } else {
+                    // Clear saved params on failure
+                    self.asrModelDir   = nil
+                    self.asrVadModel   = nil
+                    self.asrPunctModel = nil
+                    self.channel?.invokeMethod("onAsrReady", arguments: [
+                        "success": false,
+                        "error": "Failed to initialise ASR (C layer returned \(ret))"
+                    ])
+                }
+            }
+        }
+    }
+
+    /// Synchronous init helper — used internally when restoring ASR after a URL change
+    /// (player recreation). Called from setUrl() which already runs on the main thread;
+    /// the restoration is also dispatched to a background thread to stay non-blocking.
     @discardableResult
     private func initAsr(modelDir: String, vadModel: String? = nil, punctModel: String? = nil) -> Int32 {
         guard let player = player else { return -1 }
@@ -668,6 +727,12 @@ public class FfplayPlatformView: NSView {
         guard let player = player else { return }
         FfplayNativePlayer.enableAsr(player, enable: enable)
         asrEnabled = enable
+        // When fully disabled, clear saved params so ASR is not auto-restored next time
+        if !enable {
+            asrModelDir = nil
+            asrVadModel = nil
+            asrPunctModel = nil
+        }
     }
 
     /// Called when ASR produces a result. Forwards to Flutter via MethodChannel.
