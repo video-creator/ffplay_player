@@ -46,6 +46,23 @@ class _HomePageState extends State<_HomePage> {
   // Loop and speed settings
   int _loop = 1;
   double _speed = 1.0;
+
+  // ASR / subtitle state
+  bool _asrEnabled = false;
+  String _currentSubtitle = '';
+  String _lastFinalSubtitle = '';
+  // 用于 isFinal 后延迟清屏
+  bool _subtitleClearing = false;
+
+  // Default model path — user can change this
+  static const String _defaultModelDir =
+      '/Users/wangyaqiang/Downloads/sherpa-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en';
+  // Silero VAD model path for sentence boundary detection
+  static const String _defaultVadModel =
+      '/Users/wangyaqiang/Downloads/sherpa-models/silero-vad/silero_vad.onnx';
+  // ct-transformer punctuation model path (optional)
+  static const String _defaultPunctModel =
+      '/Users/wangyaqiang/Downloads/sherpa-models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12/model.onnx';
   
   @override
   void initState() {
@@ -62,10 +79,72 @@ class _HomePageState extends State<_HomePage> {
       _controller!.onStateChanged = _onStateChanged;
       _controller!.onStatsUpdated = _onStatsUpdated;
       _controller!.onError = _onError;
+      _controller!.onSubtitleUpdate = _onSubtitleUpdate;
       setState(() {});
     } catch (e) {
       setState(() {
         _status = 'Error creating player: $e';
+      });
+    }
+  }
+
+  void _onSubtitleUpdate(String text, bool isFinal, double positionS) {
+    if (isFinal && text.isNotEmpty) {
+      // 收到 final 结果：立即显示带标点的完整句子，然后延迟 1.5s 清屏
+      setState(() {
+        _currentSubtitle = text;
+        _lastFinalSubtitle = text;
+        _subtitleClearing = true;
+      });
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted && _subtitleClearing) {
+          setState(() {
+            _currentSubtitle = '';
+            _subtitleClearing = false;
+          });
+        }
+      });
+    } else if (!_subtitleClearing) {
+      // partial 结果：只在没有等待清屏时才更新（避免清屏前又显示新 partial）
+      setState(() {
+        _currentSubtitle = text;
+      });
+    } else {
+      // 清屏等待期间收到新 partial，说明新句已开始，立即取消清屏并显示
+      setState(() {
+        _subtitleClearing = false;
+        _currentSubtitle = text;
+      });
+    }
+  }
+
+  Future<void> _toggleAsr() async {
+    if (_controller == null) return;
+    if (!_asrEnabled) {
+      // Init ASR with model directory and VAD model for better sentence segmentation
+      final success = await _controller!.initAsr(
+        _defaultModelDir,
+        vadModel: _defaultVadModel,
+        punctModel: _defaultPunctModel,
+      );
+      if (success) {
+        setState(() {
+          _asrEnabled = true;
+          _currentSubtitle = '';
+          _lastFinalSubtitle = '';
+          _status = 'ASR 已启用';
+        });
+      } else {
+        setState(() {
+          _status = '❌ ASR 初始化失败，请确认模型路径: $_defaultModelDir';
+        });
+      }
+    } else {
+      await _controller!.enableAsr(false);
+      setState(() {
+        _asrEnabled = false;
+        _currentSubtitle = '';
+        _status = 'ASR 已停用';
       });
     }
   }
@@ -313,18 +392,59 @@ class _HomePageState extends State<_HomePage> {
         color: Colors.black,
         child: Column(
           children: [
-            // Video player area
+            // Video player area with subtitle overlay
             Expanded(
-              child: _controller != null
-                  ? FfplayPlayer(
-                      controller: _controller!,
-                      url: _currentUrl,
-                      autoPlay: true,
-                      backgroundColor: Colors.black,
-                    )
-                  : const Center(
-                      child: Text('No player', style: TextStyle(color: Colors.white54)),
+              child: Stack(
+                children: [
+                  _controller != null
+                      ? FfplayPlayer(
+                          controller: _controller!,
+                          url: _currentUrl,
+                          autoPlay: true,
+                          backgroundColor: Colors.black,
+                        )
+                      : const Center(
+                          child: Text('No player', style: TextStyle(color: Colors.white54)),
+                        ),
+
+                  // Real-time ASR subtitle overlay
+                  if (_asrEnabled && _currentSubtitle.isNotEmpty)
+                    Positioned(
+                      bottom: 24,
+                      left: 40,
+                      right: 40,
+                      child: Center(
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 700),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.72),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            _currentSubtitle,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              height: 1.4,
+                              fontWeight: FontWeight.w500,
+                              shadows: [
+                                Shadow(
+                                  offset: Offset(1, 1),
+                                  blurRadius: 3,
+                                  color: Colors.black,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
+                ],
+              ),
             ),
             
             // Bottom control bar
@@ -460,6 +580,17 @@ class _HomePageState extends State<_HomePage> {
                       
                       const SizedBox(width: 16),
                       
+                      // ASR subtitle toggle button
+                      IconButton(
+                        icon: Icon(
+                          Icons.closed_caption,
+                          color: _asrEnabled ? Colors.blue : Colors.white38,
+                        ),
+                        iconSize: 24,
+                        tooltip: _asrEnabled ? '关闭字幕' : '开启字幕 (ASR)',
+                        onPressed: _toggleAsr,
+                      ),
+
                       IconButton(
                         icon: Icon(
                           _loop == 0 ? Icons.repeat : Icons.repeat_one,

@@ -19,6 +19,9 @@ public class FfplayPlatformView: NSView {
     private var muted: Bool = false  // Mute state
     private var volume: Int = 100    // Volume (0-100)
     private var playerDestroyed: Bool = false  // Track if player was destroyed after playback complete
+
+    // ASR state
+    private var asrEnabled: Bool = false   // Whether ASR is currently active
     
     public init(viewIdentifier: Int64, arguments args: Any?, binaryMessenger messenger: FlutterBinaryMessenger) {
         self.viewIdentifier = viewIdentifier
@@ -169,6 +172,24 @@ public class FfplayPlatformView: NSView {
                 result(nil)
             } else {
                 result(FlutterError(code: "INVALID_ARG", message: "Speed is required", details: nil))
+            }
+            
+        case "initAsr":
+            if let modelDir = args?["modelDir"] as? String {
+                let vadModel = args?["vadModel"] as? String
+                let punctModel = args?["punctModel"] as? String
+                let ret = initAsr(modelDir: modelDir, vadModel: vadModel, punctModel: punctModel)
+                result(ret == 0 ? nil : FlutterError(code: "ASR_ERROR", message: "Failed to init ASR", details: nil))
+            } else {
+                result(FlutterError(code: "INVALID_ARG", message: "modelDir is required", details: nil))
+            }
+            
+        case "enableAsr":
+            if let enable = args?["enable"] as? Bool {
+                enableAsr(enable)
+                result(nil)
+            } else {
+                result(FlutterError(code: "INVALID_ARG", message: "enable is required", details: nil))
             }
             
         default:
@@ -604,6 +625,62 @@ public class FfplayPlatformView: NSView {
         channel?.invokeMethod("onPlaybackComplete", arguments: nil)
     }
     
+    // MARK: - ASR (Automatic Speech Recognition)
+
+    /// Static C callback for ASR results.
+    /// Uses `userData` to bridge back to the FfplayPlatformView instance.
+    private static let asrCCallback: @convention(c) (
+        UnsafePointer<CChar>?,
+        Int32,
+        Double,
+        UnsafeMutableRawPointer?
+    ) -> Void = { textPtr, isFinal, startS, userData in
+        guard let userData = userData else { return }
+        let view = Unmanaged<FfplayPlatformView>.fromOpaque(userData).takeUnretainedValue()
+        let text = textPtr.map { String(cString: $0) } ?? ""
+        DispatchQueue.main.async {
+            view.onAsrResult(text: text, isFinal: isFinal != 0, startS: startS)
+        }
+    }
+
+    /// Initialise ASR with the given model directory path.
+    /// Returns 0 on success, -1 on failure.
+    @discardableResult
+    private func initAsr(modelDir: String, vadModel: String? = nil, punctModel: String? = nil) -> Int32 {
+        guard let player = player else { return -1 }
+        let userData = Unmanaged.passUnretained(self).toOpaque()
+        let ret = FfplayNativePlayer.initAsr(
+            player,
+            modelDir: modelDir,
+            vadModel: (vadModel?.isEmpty == false) ? vadModel : nil,
+            punctModel: (punctModel?.isEmpty == false) ? punctModel : nil,
+            callback: FfplayPlatformView.asrCCallback,
+            userData: userData
+        )
+        if ret == 0 {
+            asrEnabled = true
+        }
+        return ret
+    }
+
+    /// Enable or disable ASR audio feeding.
+    private func enableAsr(_ enable: Bool) {
+        guard let player = player else { return }
+        FfplayNativePlayer.enableAsr(player, enable: enable)
+        asrEnabled = enable
+    }
+
+    /// Called when ASR produces a result. Forwards to Flutter via MethodChannel.
+    private func onAsrResult(text: String, isFinal: Bool, startS: Double) {
+        let position = getPosition()
+        channel?.invokeMethod("onSubtitleUpdate", arguments: [
+            "text": text,
+            "is_final": isFinal,
+            "start_s": startS,
+            "position_s": position
+        ])
+    }
+
     // MARK: - Cleanup
     
     private func destroyPlayer() {

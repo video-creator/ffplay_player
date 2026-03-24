@@ -28,7 +28,24 @@ public class FfplayNativePlayer {
     private typealias FFplayPlayerSetSpeed = @convention(c) (OpaquePointer, Double) -> Void
     private typealias FFplayPlayerGetSpeed = @convention(c) (OpaquePointer) -> Double
     private typealias FFplayPlayerSetStartTime = @convention(c) (OpaquePointer, Double) -> Void
-    
+
+    // ASR (Automatic Speech Recognition) function types
+    // C signature: int ffplay_player_init_asr(FFPlayer*, const char* model_dir, const char* vad_model, const char* punct_model, callback, void* userdata)
+    private typealias FFplayPlayerInitAsr = @convention(c) (
+        OpaquePointer,
+        UnsafePointer<CChar>,
+        UnsafePointer<CChar>?,
+        UnsafePointer<CChar>?,
+        @convention(c) (UnsafePointer<CChar>?, Int32, Double, UnsafeMutableRawPointer?) -> Void,
+        UnsafeMutableRawPointer?
+    ) -> Int32
+    // C signature: void ffplay_player_enable_asr(FFPlayer*, int enable)
+    private typealias FFplayPlayerEnableAsr = @convention(c) (OpaquePointer, Int32) -> Void
+    // C signature: void ffplay_player_reset_asr(FFPlayer*)
+    private typealias FFplayPlayerResetAsr = @convention(c) (OpaquePointer) -> Void
+    // C signature: void ffplay_player_destroy_asr(FFPlayer*)
+    private typealias FFplayPlayerDestroyAsr = @convention(c) (OpaquePointer) -> Void
+
     // FFmpeg Transcoder functions for audio extraction
     private typealias FFmpegTranscoderInit = @convention(c) () -> OpaquePointer?
     private typealias FFmpegTranscoderRun = @convention(c) (OpaquePointer, Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?) -> Void
@@ -69,6 +86,12 @@ public class FfplayNativePlayer {
     private static var _setSpeed: FFplayPlayerSetSpeed?
     private static var _getSpeed: FFplayPlayerGetSpeed?
     private static var _setStartTime: FFplayPlayerSetStartTime?
+
+    // ASR functions
+    private static var _initAsr: FFplayPlayerInitAsr?
+    private static var _enableAsr: FFplayPlayerEnableAsr?
+    private static var _resetAsr: FFplayPlayerResetAsr?
+    private static var _destroyAsr: FFplayPlayerDestroyAsr?
     
     // FFmpeg Transcoder functions
     private static var _transcoderInit: FFmpegTranscoderInit?
@@ -132,6 +155,20 @@ public class FfplayNativePlayer {
         _setSpeed = unsafeBitCast(dlsym(handle, "ffplay_player_set_speed"), to: FFplayPlayerSetSpeed.self)
         _getSpeed = unsafeBitCast(dlsym(handle, "ffplay_player_get_speed"), to: FFplayPlayerGetSpeed.self)
         _setStartTime = unsafeBitCast(dlsym(handle, "ffplay_player_set_start_time"), to: FFplayPlayerSetStartTime.self)
+
+        // Load ASR functions (optional — may not be present in older builds)
+        if let sym = dlsym(handle, "ffplay_player_init_asr") {
+            _initAsr = unsafeBitCast(sym, to: FFplayPlayerInitAsr.self)
+        }
+        if let sym = dlsym(handle, "ffplay_player_enable_asr") {
+            _enableAsr = unsafeBitCast(sym, to: FFplayPlayerEnableAsr.self)
+        }
+        if let sym = dlsym(handle, "ffplay_player_reset_asr") {
+            _resetAsr = unsafeBitCast(sym, to: FFplayPlayerResetAsr.self)
+        }
+        if let sym = dlsym(handle, "ffplay_player_destroy_asr") {
+            _destroyAsr = unsafeBitCast(sym, to: FFplayPlayerDestroyAsr.self)
+        }
         
         // Load FFmpeg transcoder functions
         _transcoderInit = unsafeBitCast(dlsym(handle, "ffmpeg_transcoder_init"), to: FFmpegTranscoderInit.self)
@@ -265,6 +302,63 @@ public class FfplayNativePlayer {
     /// @param startTimeS  Start position in seconds. Use -1 to start from beginning.
     public static func setStartTime(_ player: OpaquePointer, startTimeS: Double) {
         _setStartTime?(player, startTimeS)
+    }
+    
+    // MARK: - ASR (Automatic Speech Recognition)
+    
+    /// Initialise the ASR recognizer for a player instance.
+    ///
+    /// - Parameters:
+    ///   - player:     The player instance.
+    ///   - modelDir:   Path to directory containing sherpa-onnx ASR model files.
+    ///   - vadModel:   Path to silero_vad.onnx. Pass nil to disable VAD and
+    ///                 rely on ASR endpoint detection.
+    ///   - punctModel: Path to ct-transformer punctuation model.onnx.
+    ///                 Pass nil to disable punctuation.
+    ///   - callback:   C-convention callback invoked with recognition results.
+    ///   - userData:   Opaque pointer passed through to callback (use Unmanaged).
+    /// - Returns: 0 on success, -1 on failure.
+    @discardableResult
+    public static func initAsr(
+        _ player: OpaquePointer,
+        modelDir: String,
+        vadModel: String? = nil,
+        punctModel: String? = nil,
+        callback: @convention(c) (UnsafePointer<CChar>?, Int32, Double, UnsafeMutableRawPointer?) -> Void,
+        userData: UnsafeMutableRawPointer?
+    ) -> Int32 {
+        guard let fn = _initAsr else { return -1 }
+        return modelDir.withCString { cDir in
+            func callWithPunct(_ cVad: UnsafePointer<CChar>?) -> Int32 {
+                if let punct = punctModel, !punct.isEmpty {
+                    return punct.withCString { cPunct in
+                        fn(player, cDir, cVad, cPunct, callback, userData)
+                    }
+                } else {
+                    return fn(player, cDir, cVad, nil, callback, userData)
+                }
+            }
+            if let vad = vadModel, !vad.isEmpty {
+                return vad.withCString { cVad in callWithPunct(cVad) }
+            } else {
+                return callWithPunct(nil)
+            }
+        }
+    }
+    
+    /// Enable or disable ASR audio feeding (without destroying the recognizer).
+    public static func enableAsr(_ player: OpaquePointer, enable: Bool) {
+        _enableAsr?(player, enable ? 1 : 0)
+    }
+    
+    /// Reset the ASR recognizer state (e.g., after seek).
+    public static func resetAsr(_ player: OpaquePointer) {
+        _resetAsr?(player)
+    }
+    
+    /// Destroy the ASR context for this player.
+    public static func destroyAsr(_ player: OpaquePointer) {
+        _destroyAsr?(player)
     }
     
     // MARK: - Audio Extraction (using FFmpeg Transcoder)

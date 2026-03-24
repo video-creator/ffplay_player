@@ -25,7 +25,7 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
 
 SPEC CHECKSUMS:
-  ffplay_player: 323db26557405dca5d59bf82908f70c5b80eddd0
+  ffplay_player: d8fcc4972b048160f6617976e6f0273062ef4536
   file_selector_macos: 660f7672ee62dad6df1bb0cbdb90a10ce3f946df
   FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
   path_provider_foundation: 608fcb11be570ce83519b076ab6a1fffe2474f05

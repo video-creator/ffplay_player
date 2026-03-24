@@ -41,6 +41,12 @@ typedef PlayerStateCallback = void Function(FfplayPlayerState state);
 typedef PlayerStatsCallback = void Function(FfplayPlayerStats stats);
 typedef PlayerErrorCallback = void Function(String error);
 
+/// Subtitle / ASR result callback.
+/// [text]       - recognized text (partial or final)
+/// [isFinal]    - true = final result (sentence boundary), false = partial
+/// [positionS]  - approximate playback position when the result was emitted
+typedef SubtitleCallback = void Function(String text, bool isFinal, double positionS);
+
 /// Controller for the FfplayPlayer widget
 class FfplayPlayerController {
   int? _viewId;
@@ -59,6 +65,12 @@ class FfplayPlayerController {
   PlayerStateCallback? onStateChanged;
   PlayerStatsCallback? onStatsUpdated;
   PlayerErrorCallback? onError;
+
+  /// Called when ASR produces a subtitle result.
+  /// [text]      - Recognized text (partial or final)
+  /// [isFinal]   - true = final sentence, false = partial
+  /// [positionS] - Approximate playback position in seconds
+  SubtitleCallback? onSubtitleUpdate;
   
   FfplayPlayerController();
   
@@ -98,6 +110,13 @@ class FfplayPlayerController {
       case 'onPlaybackComplete':
         _state = FfplayPlayerState.stopped;
         onStateChanged?.call(_state);
+        break;
+      case 'onSubtitleUpdate':
+        final subArgs = call.arguments as Map<dynamic, dynamic>;
+        final text = subArgs['text'] as String? ?? '';
+        final isFinal = subArgs['is_final'] as bool? ?? false;
+        final positionS = (subArgs['position_s'] as num?)?.toDouble() ?? 0.0;
+        onSubtitleUpdate?.call(text, isFinal, positionS);
         break;
     }
   }
@@ -232,6 +251,49 @@ class FfplayPlayerController {
     return (result as num?)?.toDouble() ?? 0;
   }
   
+  // MARK: - ASR (Automatic Speech Recognition)
+
+  /// Initialise real-time ASR (subtitle recognition) for this player.
+  ///
+  /// Must be called after the platform view has been created (i.e., after the
+  /// player widget is added to the tree).
+  ///
+  /// [modelDir] - Path to a directory containing sherpa-onnx model files:
+  ///   encoder.int8.onnx, decoder.onnx, joiner.int8.onnx, tokens.txt
+  ///
+  /// [vadModel] - Optional path to silero_vad.onnx for VAD-based sentence
+  ///   segmentation. When provided, sentence boundaries are detected by the
+  ///   VAD model (produces cleaner results). Pass null to fall back to ASR
+  ///   internal endpoint detection.
+  ///
+  /// [punctModel] - Optional path to ct-transformer punctuation model.onnx.
+  ///   When provided, final ASR results are post-processed to add punctuation.
+  ///   Pass null to skip punctuation.
+  ///
+  /// Returns `true` on success.
+  Future<bool> initAsr(String modelDir, {String? vadModel, String? punctModel}) async {
+    if (_channel == null) return false;
+    try {
+      await _channel!.invokeMethod('initAsr', {
+        'modelDir': modelDir,
+        if (vadModel != null && vadModel.isNotEmpty) 'vadModel': vadModel,
+        if (punctModel != null && punctModel.isNotEmpty) 'punctModel': punctModel,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Enable or disable ASR audio feeding.
+  ///
+  /// When disabled, audio is no longer sent to the recognizer but the
+  /// recognizer itself is kept alive (no teardown cost on re-enable).
+  Future<void> enableAsr(bool enable) async {
+    if (_channel == null) return;
+    await _channel!.invokeMethod('enableAsr', {'enable': enable});
+  }
+
   /// Dispose the controller
   void dispose() {
     _channel?.setMethodCallHandler(null);

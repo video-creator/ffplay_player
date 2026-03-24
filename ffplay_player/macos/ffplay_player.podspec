@@ -36,7 +36,9 @@ Supports seek, pause, volume control and embedded video rendering.
     'Libraries/libxcb.1.dylib',
     'Libraries/libxcb-shm.0.dylib',
     'Libraries/libxcb-shape.0.dylib',
-    'Libraries/libxcb-xfixes.0.dylib'
+    'Libraries/libxcb-xfixes.0.dylib',
+    'Libraries/libsherpa-onnx-c-api.dylib',
+    'Libraries/libonnxruntime.1.17.1.dylib'
   ]
   
   # Configure build settings
@@ -69,5 +71,30 @@ Supports seek, pause, volume control and embedded video rendering.
   # Link against system libraries
   s.xcconfig = {
     'OTHER_LDFLAGS' => '$(inherited) -lbz2 -lz -liconv -lxml2 -lm -lpthread -ldl -ldl'
+  }
+
+  # Force-copy sherpa-onnx and onnxruntime dylibs into the app bundle Frameworks directory.
+  # CocoaPods vendored_libraries only links them but does not recursively embed transitive
+  # dynamic dependencies. We do it here with a Build Phase script so dyld can find them at
+  # runtime next to libffmpeg_jni.dylib.
+  s.script_phase = {
+    :name => 'Copy sherpa-onnx dylibs',
+    :script => <<-SCRIPT,
+FRAMEWORKS_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+PLUGIN_DIR="${PODS_ROOT}/../.symlinks/plugins/ffplay_player/macos/Libraries"
+
+copy_and_sign() {
+  local SRC="$1"
+  local DEST="${FRAMEWORKS_DIR}/$(basename $1)"
+  if [ -f "$SRC" ] && [ ! -f "$DEST" ]; then
+    cp "$SRC" "$DEST"
+    codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements "$DEST" 2>/dev/null || true
+  fi
+}
+
+copy_and_sign "${PLUGIN_DIR}/libsherpa-onnx-c-api.dylib"
+copy_and_sign "${PLUGIN_DIR}/libonnxruntime.1.17.1.dylib"
+SCRIPT
+    :execution_position => :after_compile
   }
 end
