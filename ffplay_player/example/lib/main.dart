@@ -43,9 +43,11 @@ class _TabData {
   String? currentUrl;
   FfplayPlayerController controller;
   bool asrEnabled;
-  bool asrLoading;   // true while model is loading in background
+  bool asrLoading;   // true while ASR models are loading in background
   String currentSubtitle;
-  bool subtitleClearing;
+  String finalSubtitleBuffer;  // accumulated final sentences (space-separated)
+  bool subtitleClearing;       // kept for API compat, no longer used for clear logic
+  Timer? clearTimer;           // auto-clear timer after silence
   final SubtitleHistory subtitleHistory;
   Timer? autoSaveTimer;
 
@@ -57,11 +59,13 @@ class _TabData {
         asrEnabled = false,
         asrLoading = false,
         currentSubtitle = '',
+        finalSubtitleBuffer = '',
         subtitleClearing = false,
         subtitleHistory = SubtitleHistory();
 
   void dispose() {
     autoSaveTimer?.cancel();
+    clearTimer?.cancel();
     controller.dispose();
   }
 }
@@ -127,36 +131,75 @@ class _AppShellState extends State<AppShell> {
   }
 
   // ── subtitle callback ──
+  //
+  // Clear-screen rules (applied when isFinal=true):
+  //   A) New sentence alone > 15 chars  → clear immediately, show new sentence alone.
+  //   B) New sentence alone ≤ 15 chars:
+  //        • Accumulated (prev + new) > 30 chars  → clear, show new sentence alone.
+  //        • Otherwise                             → append with a space (keep both).
+  //   After any final, a 1-second pause timer is started.  If no new speech
+  //   arrives within 1 s the screen clears (handles rule "pause > 1 s → clear").
+  //
+  // Partial results are shown as a live preview appended after the current buffer.
+  // Subtitle is displayed with fontSize=20 in a maxWidth=720 box → ~18 CJK chars per line.
+  // We keep to ONE line (maxLines=1) so the overlay never grows taller.
+  // Rules (applied on isFinal):
+  //   • New sentence alone ≥ _kLineCap chars  → clear first, show new sentence alone.
+  //   • Combined (prev + new) ≥ _kLineCap     → clear first, show new sentence alone.
+  //   • Combined < _kLineCap                  → append with a space.
+  //   In all cases a 1-second silence timer triggers a clear.
+  static const int _kLineCap = 18; // chars that fit in one line at fontSize 20 / width 720
+
+  void _clearSubtitle(_TabData tab) {
+    if (mounted) {
+      setState(() {
+        tab.finalSubtitleBuffer = '';
+        tab.currentSubtitle = '';
+        tab.subtitleClearing = false;
+      });
+    }
+  }
+
   void _onSubtitle(_TabData tab, String text, bool isFinal, double posS) {
     if (isFinal && text.isNotEmpty) {
       tab.subtitleHistory.add(text, posS);
+      tab.clearTimer?.cancel();
+
+      final prev = tab.finalSubtitleBuffer.trim();
+      final joined = prev.isEmpty ? text : '$prev $text';
+
+      // Clear if either the new sentence alone or the combined text fills the line.
+      if (text.length >= _kLineCap || joined.length >= _kLineCap) {
+        tab.finalSubtitleBuffer = text; // start fresh
+      } else {
+        tab.finalSubtitleBuffer = joined; // keep both
+      }
+
       setState(() {
-        tab.currentSubtitle = text;
-        tab.subtitleClearing = true;
-      });
-      Future.delayed(const Duration(milliseconds: 1800), () {
-        if (mounted && tab.subtitleClearing) {
-          setState(() {
-            tab.currentSubtitle = '';
-            tab.subtitleClearing = false;
-          });
-        }
-      });
-    } else if (!tab.subtitleClearing) {
-      setState(() => tab.currentSubtitle = text);
-    } else {
-      setState(() {
+        tab.currentSubtitle = tab.finalSubtitleBuffer;
         tab.subtitleClearing = false;
-        tab.currentSubtitle = text;
       });
+
+      // Start 1-second pause timer. Cleared if the next partial arrives in time.
+      tab.clearTimer = Timer(const Duration(seconds: 1), () => _clearSubtitle(tab));
+    } else if (text.isNotEmpty) {
+      // Partial preview: user is still speaking — cancel clear timer.
+      // Show already-confirmed text + space + current partial so the display
+      // reads naturally without the confirmed part disappearing mid-sentence.
+      tab.clearTimer?.cancel();
+      final prev = tab.finalSubtitleBuffer.trim();
+      final display = prev.isEmpty ? text : '$prev $text';
+      setState(() => tab.currentSubtitle = display);
     }
   }
 
   // ── open URL into a tab ──
   Future<void> _openInTab(_TabData tab, String url, String name) async {
     // Clear subtitle state
+    tab.clearTimer?.cancel();
     setState(() {
       tab.currentSubtitle = '';
+      tab.finalSubtitleBuffer = '';
       tab.subtitleClearing = false;
       tab.subtitleHistory.clear();
       tab.title = name.length > 20 ? '${name.substring(0, 18)}…' : name;
